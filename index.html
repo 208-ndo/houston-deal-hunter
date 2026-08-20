@@ -57,13 +57,16 @@
   .controls input[type=text]{min-width:220px;}
   .controls label{color:var(--muted); font-size:12.5px; display:flex; align-items:center; gap:6px;}
 
+  .tableScrollTop{overflow-x:auto; overflow-y:hidden; height:16px; margin:14px 24px 0; }
+  .tableScrollTop .scrollSpacer{height:1px;}
   .tableWrap{overflow:auto; max-width:100vw; padding:0 24px 24px;}
-  table{border-collapse:separate; border-spacing:0; width:100%; margin-top:14px; min-width:1900px;}
+  table{border-collapse:separate; border-spacing:0; width:100%; margin-top:6px; min-width:1900px;}
   thead th{
     position:sticky; top:0; background:var(--panel2); color:var(--muted);
     text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px;
     padding:9px 10px; border-bottom:1px solid var(--border); white-space:nowrap; z-index:2;
   }
+  thead th.stickyRight{position:sticky; right:0; z-index:4; box-shadow:-8px 0 8px -8px rgba(0,0,0,.6);}
   tbody td{
     padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; white-space:nowrap;
   }
@@ -124,7 +127,8 @@
   a.zlink{color:var(--accent); text-decoration:none; font-weight:600;}
   a.zlink:hover{text-decoration:underline;}
 
-  .rowActions{display:flex; gap:4px;}
+  td.rowActions{display:flex; gap:4px; position:sticky; right:0; background:var(--bg); z-index:1; box-shadow:-8px 0 8px -8px rgba(0,0,0,.6);}
+  tbody tr:hover td.rowActions{background:#171a22;}
   .iconBtn{
     border:none; background:transparent; color:var(--muted); cursor:pointer; padding:4px; border-radius:6px;
   }
@@ -196,7 +200,8 @@
   </select>
 </div>
 
-<div class="tableWrap">
+<div class="tableScrollTop" id="tableScrollTop"><div class="scrollSpacer" id="scrollSpacer"></div></div>
+<div class="tableWrap" id="tableWrap">
   <table id="dealTable">
     <thead>
       <tr>
@@ -223,7 +228,7 @@
         <th>Last Seen</th>
         <th>Resurfaced</th>
         <th>Notes</th>
-        <th></th>
+        <th class="stickyRight">Offer / Del</th>
       </tr>
     </thead>
     <tbody id="tbody"></tbody>
@@ -456,6 +461,35 @@ function render(){
       </td>
     </tr>`;
   }).join('');
+  syncScrollSpacer();
+}
+
+// ---------- Keep a mirrored scrollbar right under the controls, and sync it
+// with the table's own horizontal scroll, so reaching the rightmost columns
+// (Offer / Del) never requires scrolling all the way to the bottom of the page. ----------
+function syncScrollSpacer(){
+  const table = document.getElementById('dealTable');
+  const spacer = document.getElementById('scrollSpacer');
+  if(!table || !spacer) return;
+  spacer.style.width = table.scrollWidth + 'px';
+}
+function setupScrollSync(){
+  const top = document.getElementById('tableScrollTop');
+  const wrap = document.getElementById('tableWrap');
+  if(!top || !wrap) return;
+  syncScrollSpacer();
+  let syncing = false;
+  top.addEventListener('scroll', ()=>{
+    if(syncing) return; syncing = true;
+    wrap.scrollLeft = top.scrollLeft;
+    syncing = false;
+  });
+  wrap.addEventListener('scroll', ()=>{
+    if(syncing) return; syncing = true;
+    top.scrollLeft = wrap.scrollLeft;
+    syncing = false;
+  });
+  window.addEventListener('resize', syncScrollSpacer);
 }
 
 function updateField(id, field, value){
@@ -739,6 +773,7 @@ function copyBox(id){
 
 load();
 render();
+setupScrollSync();
 </script>
 
 </body>
