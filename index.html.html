@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Houston On-Market Deal Hunter</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#161922; --panel2:#1c2029; --border:#2a2f3b;
+    --text:#e8eaf0; --muted:#9aa1b1; --accent:#4f8cff; --accent2:#7c5cff;
+    --green:#3ecf8e; --amber:#e6b450; --red:#f16b6b; --pink:#ea6fac; --teal:#3ec9c9;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:14px;
+  }
+  header{
+    padding:20px 24px 14px; border-bottom:1px solid var(--border);
+    display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;
+  }
+  header h1{margin:0 0 4px; font-size:20px; font-weight:700; letter-spacing:.2px;}
+  header .sub{color:var(--muted); font-size:12.5px;}
+  .headerActions{display:flex; gap:8px; flex-wrap:wrap;}
+  button{
+    font:inherit; cursor:pointer; border-radius:8px; border:1px solid var(--border);
+    background:var(--panel2); color:var(--text); padding:7px 12px; transition:background .15s;
+  }
+  button:hover{background:#232838;}
+  button.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+  button.primary:hover{background:#3d78e6;}
+  button.ghost{background:transparent;}
+  button.danger{border-color:var(--red); color:var(--red); background:transparent;}
+  button.danger:hover{background:rgba(241,107,107,.1);}
+
+  .stats{
+    display:grid; grid-template-columns:repeat(7,1fr); gap:10px;
+    padding:16px 24px; border-bottom:1px solid var(--border);
+  }
+  .stat{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:10px 12px;
+  }
+  .stat .n{font-size:20px; font-weight:700;}
+  .stat .l{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin-top:2px;}
+
+  .controls{
+    display:flex; gap:10px; padding:14px 24px; flex-wrap:wrap; align-items:center;
+    border-bottom:1px solid var(--border); background:var(--panel);
+  }
+  .controls input[type=text], .controls select{
+    background:var(--panel2); border:1px solid var(--border); color:var(--text);
+    border-radius:8px; padding:7px 10px; font:inherit;
+  }
+  .controls input[type=text]{min-width:220px;}
+  .controls label{color:var(--muted); font-size:12.5px; display:flex; align-items:center; gap:6px;}
+
+  .tableWrap{overflow:auto; max-width:100vw; padding:0 24px 24px;}
+  table{border-collapse:separate; border-spacing:0; width:100%; margin-top:14px; min-width:1900px;}
+  thead th{
+    position:sticky; top:0; background:var(--panel2); color:var(--muted);
+    text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.4px;
+    padding:9px 10px; border-bottom:1px solid var(--border); white-space:nowrap; z-index:2;
+  }
+  tbody td{
+    padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; white-space:nowrap;
+  }
+  tbody tr:hover{background:rgba(255,255,255,.02);}
+  td.addr{white-space:normal; max-width:220px; position:sticky; left:0; background:var(--bg); z-index:1;}
+  tbody tr:hover td.addr{background:#171a22;}
+  td.notes, td.distress{white-space:normal; max-width:200px;}
+  .empty-state{
+    padding:60px 24px; text-align:center; color:var(--muted);
+  }
+  .empty-state h2{color:var(--text); font-size:16px; margin-bottom:6px;}
+  .empty-state code{background:var(--panel2); padding:2px 6px; border-radius:6px;}
+
+  .score{font-weight:700; font-size:15px;}
+  .score.hi{color:var(--green);}
+  .score.mid{color:var(--amber);}
+  .score.lo{color:var(--muted);}
+
+  .dom.hi{color:var(--green); font-weight:700;}
+  .dom.mid{color:var(--amber); font-weight:600;}
+
+  .badge{
+    display:inline-block; padding:3px 8px; border-radius:999px; font-size:11px; font-weight:600;
+    border:1px solid transparent; white-space:nowrap;
+  }
+  .b-new{background:rgba(79,140,255,.15); color:#7fa8ff;}
+  .b-needscomp{background:rgba(124,92,255,.15); color:#a793ff;}
+  .b-ready{background:rgba(62,207,142,.15); color:#4fe0a3;}
+  .b-offersent{background:rgba(230,180,80,.18); color:#f0c665;}
+  .b-noresponse{background:rgba(154,161,177,.15); color:#c2c7d3;}
+  .b-counter{background:rgba(62,201,201,.15); color:#5fe0e0;}
+  .b-declined{background:rgba(241,107,107,.15); color:#f88;}
+  .b-accepted{background:rgba(62,207,142,.25); color:#5fe8ac;}
+  .b-dead{background:rgba(154,161,177,.1); color:#7c8291; text-decoration:line-through;}
+  .b-followup{background:rgba(234,111,172,.15); color:#f490c2;}
+
+  .pill{
+    display:inline-block; background:var(--panel2); border:1px solid var(--border);
+    color:var(--muted); font-size:10.5px; padding:2px 6px; border-radius:999px; margin:1px 2px 1px 0;
+  }
+
+  select.statusSel{background:var(--panel2); border:1px solid var(--border); color:var(--text); border-radius:6px; padding:4px 6px; font:inherit; font-size:12px;}
+
+  .contactBtn{
+    display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px;
+    border-radius:6px; border:1px solid var(--border); background:var(--panel2); cursor:pointer; font-size:12px;
+  }
+  .contactBtn.on{background:rgba(62,207,142,.2); border-color:var(--green); color:var(--green);}
+
+  .editable{
+    background:transparent; border:1px solid transparent; color:var(--text); font:inherit;
+    padding:3px 5px; border-radius:6px; width:90px;
+  }
+  .editable:hover, .editable:focus{border-color:var(--border); background:var(--panel2); outline:none;}
+  .editable.wide{width:150px;}
+  .editable.notesInput{width:180px;}
+
+  a.zlink{color:var(--accent); text-decoration:none; font-weight:600;}
+  a.zlink:hover{text-decoration:underline;}
+
+  .rowActions{display:flex; gap:4px;}
+  .iconBtn{
+    border:none; background:transparent; color:var(--muted); cursor:pointer; padding:4px; border-radius:6px;
+  }
+  .iconBtn:hover{color:var(--red); background:rgba(241,107,107,.1);}
+
+  dialog{
+    border:1px solid var(--border); border-radius:12px; background:var(--panel); color:var(--text);
+    padding:0; width:min(520px, 92vw);
+  }
+  dialog::backdrop{background:rgba(0,0,0,.55);}
+  .modalHead{padding:16px 20px; border-bottom:1px solid var(--border); font-weight:700;}
+  .modalBody{padding:16px 20px; display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .modalBody .full{grid-column:1/-1;}
+  .modalBody label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.3px; display:block; margin-bottom:4px;}
+  .modalBody input, .modalBody select, .modalBody textarea{
+    width:100%; background:var(--panel2); border:1px solid var(--border); color:var(--text);
+    border-radius:8px; padding:8px 10px; font:inherit;
+  }
+  .modalFoot{padding:14px 20px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:8px;}
+
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background:var(--panel2); border:1px solid var(--border); padding:10px 16px; border-radius:8px;
+    font-size:13px; opacity:0; pointer-events:none; transition:opacity .2s; z-index:50;
+  }
+  .toast.show{opacity:1;}
+
+  footer{padding:14px 24px; color:var(--muted); font-size:11.5px; border-top:1px solid var(--border);}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🏚️ Houston On-Market Deal Hunter</h1>
+    <div class="sub">Active SFR opportunities · Score, contact, and offer tracker · <span id="lastUpdated">no runs yet</span></div>
+  </div>
+  <div class="headerActions">
+    <button class="ghost" onclick="openAddModal()">+ Add Property</button>
+    <button class="ghost" onclick="exportJSON()">Export JSON</button>
+    <button class="ghost" onclick="document.getElementById('importFile').click()">Import JSON</button>
+    <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importJSON(event)">
+    <button class="ghost" onclick="exportCSV()">Export CSV</button>
+  </div>
+</header>
+
+<div class="stats" id="stats"></div>
+
+<div class="controls">
+  <input type="text" id="searchBox" placeholder="Search address, ZIP, agent, MLS..." oninput="render()">
+  <select id="statusFilter" onchange="render()">
+    <option value="">All statuses</option>
+  </select>
+  <label><input type="checkbox" id="hideDead" onchange="render()"> Hide Dead / Declined</label>
+  <select id="sortBy" onchange="render()">
+    <option value="score">Sort: Score (high→low)</option>
+    <option value="dom">Sort: DOM (high→low)</option>
+    <option value="pricedrop">Sort: Price Drop (high→low)</option>
+    <option value="lastseen">Sort: Last Seen (new→old)</option>
+    <option value="price">Sort: List Price (low→high)</option>
+  </select>
+</div>
+
+<div class="tableWrap">
+  <table id="dealTable">
+    <thead>
+      <tr>
+        <th>Score</th>
+        <th>Address</th>
+        <th>ZIP</th>
+        <th>Zillow</th>
+        <th>List Price</th>
+        <th>Original</th>
+        <th>Price Drop</th>
+        <th>DOM</th>
+        <th>Distress Signals</th>
+        <th>ARV</th>
+        <th>Repairs</th>
+        <th>MAO</th>
+        <th>Offer</th>
+        <th>Agent</th>
+        <th>Text</th>
+        <th>Email</th>
+        <th>Call</th>
+        <th>Status</th>
+        <th>Follow-Up</th>
+        <th>First Seen</th>
+        <th>Last Seen</th>
+        <th>Resurfaced</th>
+        <th>Notes</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div class="empty-state" id="emptyState" style="display:none;">
+    <h2>No properties yet</h2>
+    <div>This board starts empty. Say <code>"Run the Houston morning deal hunt"</code> in Claude to populate it,<br>or click <code>+ Add Property</code> to add one manually.</div>
+  </div>
+</div>
+
+<dialog id="addModal">
+  <div class="modalHead">Add Property</div>
+  <div class="modalBody">
+    <div class="full"><label>Address</label><input id="f_address" placeholder="123 Main St"></div>
+    <div><label>ZIP</label><input id="f_zip"></div>
+    <div><label>Zillow URL</label><input id="f_zillow" placeholder="https://zillow.com/..."></div>
+    <div><label>List Price</label><input id="f_price" type="number"></div>
+    <div><label>Original Price</label><input id="f_orig" type="number"></div>
+    <div><label>DOM</label><input id="f_dom" type="number"></div>
+    <div><label>Score</label><input id="f_score" type="number"></div>
+    <div><label>Agent</label><input id="f_agent"></div>
+    <div class="full"><label>Distress Signals (comma separated)</label><input id="f_distress" placeholder="as-is, vacant, price cut"></div>
+    <div class="full"><label>Notes</label><textarea id="f_notes" rows="2"></textarea></div>
+  </div>
+  <div class="modalFoot">
+    <button class="ghost" onclick="document.getElementById('addModal').close()">Cancel</button>
+    <button class="primary" onclick="addProperty()">Add</button>
+  </div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<footer>
+  Houston On-Market Deal Hunter — this board is a manual/collaborative tracker. Data you enter here (contact status, offers, notes) lives in this browser via local storage.
+  Use <strong>Export JSON</strong> and send it back to Claude to save it into the project's canonical database, and to hand fresh data to Claude before your next morning run.
+</footer>
+
+<script>
+const STATUS_OPTIONS = ["New","Needs Comp","Ready to Offer","Offer Sent","No Response","Counter","Declined","Accepted","Dead","Follow-Up"];
+const STATUS_CLASS = {
+  "New":"b-new","Needs Comp":"b-needscomp","Ready to Offer":"b-ready","Offer Sent":"b-offersent",
+  "No Response":"b-noresponse","Counter":"b-counter","Declined":"b-declined","Accepted":"b-accepted",
+  "Dead":"b-dead","Follow-Up":"b-followup"
+};
+const STORAGE_KEY = "houstonDealHunterData";
+const UPDATED_KEY = "houstonDealHunterUpdated";
+
+let DATA = [];
+
+function load(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    DATA = raw ? JSON.parse(raw) : [];
+  }catch(e){ DATA = []; }
+  const upd = localStorage.getItem(UPDATED_KEY);
+  document.getElementById('lastUpdated').textContent = upd ? ("last updated " + upd) : "no runs yet";
+  const sel = document.getElementById('statusFilter');
+  sel.innerHTML = '<option value="">All statuses</option>' + STATUS_OPTIONS.map(s=>`<option value="${s}">${s}</option>`).join('');
+}
+
+function save(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(DATA));
+  const now = new Date().toLocaleString();
+  localStorage.setItem(UPDATED_KEY, now);
+  document.getElementById('lastUpdated').textContent = "last updated " + now;
+}
+
+function fmtMoney(v){
+  if(v === null || v === undefined || v === "" || isNaN(v)) return "—";
+  return "$" + Number(v).toLocaleString();
+}
+
+function scoreClass(s){
+  if(s === null || s === undefined || s === "") return "lo";
+  if(s >= 80) return "hi";
+  if(s >= 60) return "mid";
+  return "lo";
+}
+function domClass(d){
+  if(d === null || d === undefined || d === "") return "";
+  if(d >= 60) return "hi";
+  if(d >= 30) return "mid";
+  return "";
+}
+
+function computeStats(){
+  const total = DATA.length;
+  const byStatus = {};
+  STATUS_OPTIONS.forEach(s=>byStatus[s]=0);
+  DATA.forEach(d=>{ if(byStatus[d.status] !== undefined) byStatus[d.status]++; });
+  const scores = DATA.map(d=>Number(d.score)).filter(n=>!isNaN(n));
+  const avgScore = scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : "—";
+  const active = DATA.filter(d=>!["Dead","Declined"].includes(d.status)).length;
+  return [
+    {n: total, l:"Total Tracked"},
+    {n: byStatus["New"], l:"New"},
+    {n: byStatus["Ready to Offer"], l:"Ready to Offer"},
+    {n: byStatus["Offer Sent"], l:"Offer Sent"},
+    {n: byStatus["Accepted"], l:"Accepted"},
+    {n: active, l:"Active (not dead)"},
+    {n: avgScore, l:"Avg Score"},
+  ];
+}
+
+function renderStats(){
+  const el = document.getElementById('stats');
+  el.innerHTML = computeStats().map(s=>`<div class="stat"><div class="n">${s.n}</div><div class="l">${s.l}</div></div>`).join('');
+}
+
+function distressPills(str){
+  if(!str) return "—";
+  return str.split(",").map(s=>s.trim()).filter(Boolean).map(s=>`<span class="pill">${s}</span>`).join('');
+}
+
+function contactBtn(row, field){
+  const on = !!row[field];
+  const label = field==="text"?"T":field==="email"?"E":"C";
+  const title = on ? `${field} sent ${row[field+'_ts']||''}` : `Mark ${field} sent`;
+  return `<button class="contactBtn ${on?'on':''}" title="${title}" onclick="toggleContact('${row.id}','${field}')">${label}</button>`;
+}
+
+function render(){
+  renderStats();
+  const q = document.getElementById('searchBox').value.toLowerCase();
+  const statusFilter = document.getElementById('statusFilter').value;
+  const hideDead = document.getElementById('hideDead').checked;
+  const sortBy = document.getElementById('sortBy').value;
+
+  let rows = DATA.filter(d=>{
+    if(hideDead && ["Dead","Declined"].includes(d.status)) return false;
+    if(statusFilter && d.status !== statusFilter) return false;
+    if(q){
+      const hay = [d.address, d.zip, d.agent, d.mls, d.notes].join(" ").toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  rows.sort((a,b)=>{
+    if(sortBy==="score") return (b.score||0)-(a.score||0);
+    if(sortBy==="dom") return (b.dom||0)-(a.dom||0);
+    if(sortBy==="pricedrop") return (b.priceDrop||0)-(a.priceDrop||0);
+    if(sortBy==="price") return (a.price||0)-(b.price||0);
+    if(sortBy==="lastseen") return new Date(b.lastSeen||0) - new Date(a.lastSeen||0);
+    return 0;
+  });
+
+  const tbody = document.getElementById('tbody');
+  document.getElementById('emptyState').style.display = DATA.length === 0 ? 'block' : 'none';
+  document.getElementById('dealTable').style.display = DATA.length === 0 ? 'none' : 'table';
+
+  tbody.innerHTML = rows.map(row=>{
+    const stCls = STATUS_CLASS[row.status] || "b-new";
+    return `<tr>
+      <td><span class="score ${scoreClass(row.score)}">${row.score ?? "—"}</span></td>
+      <td class="addr"><strong>${row.address||"UNKNOWN"}</strong><br><span style="color:var(--muted);font-size:11.5px">${row.city||"Houston"}, TX</span></td>
+      <td>${row.zip||"—"}</td>
+      <td>${row.zillow ? `<a class="zlink" href="${row.zillow}" target="_blank" rel="noopener">View ↗</a>` : "—"}</td>
+      <td>${fmtMoney(row.price)}</td>
+      <td>${fmtMoney(row.orig)}</td>
+      <td style="color:${row.priceDrop?'var(--green)':'inherit'}">${row.priceDrop ? fmtMoney(row.priceDrop) + (row.priceDropPct?` (${row.priceDropPct}%)`:'') : "—"}</td>
+      <td><span class="dom ${domClass(row.dom)}">${row.dom ?? "—"}</span></td>
+      <td class="distress">${distressPills(row.distress)}</td>
+      <td><input class="editable" value="${row.arv||''}" placeholder="—" onchange="updateField('${row.id}','arv',this.value)"></td>
+      <td><input class="editable" value="${row.repairs||''}" placeholder="—" onchange="updateField('${row.id}','repairs',this.value)"></td>
+      <td><input class="editable" value="${row.mao||''}" placeholder="—" onchange="updateField('${row.id}','mao',this.value)"></td>
+      <td><input class="editable" value="${row.offer||''}" placeholder="—" onchange="updateField('${row.id}','offer',this.value)"></td>
+      <td class="notes" style="max-width:140px">${row.agent||"UNKNOWN"}</td>
+      <td>${contactBtn(row,'text')}</td>
+      <td>${contactBtn(row,'email')}</td>
+      <td>${contactBtn(row,'call')}</td>
+      <td>
+        <select class="statusSel" onchange="updateField('${row.id}','status',this.value)">
+          ${STATUS_OPTIONS.map(s=>`<option value="${s}" ${s===row.status?'selected':''}>${s}</option>`).join('')}
+        </select>
+      </td>
+      <td><input class="editable wide" value="${row.followUp||''}" placeholder="date/note" onchange="updateField('${row.id}','followUp',this.value)"></td>
+      <td>${row.firstSeen||"—"}</td>
+      <td>${row.lastSeen||"—"}</td>
+      <td class="notes">${row.resurfacedReason||"—"}</td>
+      <td class="notes"><input class="editable notesInput" value="${(row.notes||'').replace(/"/g,'&quot;')}" onchange="updateField('${row.id}','notes',this.value)"></td>
+      <td class="rowActions"><button class="iconBtn" title="Remove" onclick="removeRow('${row.id}')">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function updateField(id, field, value){
+  const row = DATA.find(d=>d.id===id);
+  if(!row) return;
+  row[field] = value;
+  save();
+  render();
+}
+
+function toggleContact(id, field){
+  const row = DATA.find(d=>d.id===id);
+  if(!row) return;
+  row[field] = !row[field];
+  row[field+"_ts"] = row[field] ? new Date().toLocaleDateString() : "";
+  save();
+  render();
+}
+
+function removeRow(id){
+  if(!confirm("Remove this property from the board?")) return;
+  DATA = DATA.filter(d=>d.id!==id);
+  save();
+  render();
+}
+
+function openAddModal(){
+  ["f_address","f_zip","f_zillow","f_price","f_orig","f_dom","f_score","f_agent","f_distress","f_notes"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById('addModal').showModal();
+}
+
+function addProperty(){
+  const address = document.getElementById('f_address').value.trim();
+  if(!address){ alert("Address is required."); return; }
+  const today = new Date().toLocaleDateString();
+  const row = {
+    id: "p_" + Date.now() + "_" + Math.random().toString(36).slice(2,7),
+    address,
+    zip: document.getElementById('f_zip').value.trim(),
+    zillow: document.getElementById('f_zillow').value.trim(),
+    price: Number(document.getElementById('f_price').value) || null,
+    orig: Number(document.getElementById('f_orig').value) || null,
+    dom: Number(document.getElementById('f_dom').value) || null,
+    score: Number(document.getElementById('f_score').value) || null,
+    agent: document.getElementById('f_agent').value.trim(),
+    distress: document.getElementById('f_distress').value.trim(),
+    notes: document.getElementById('f_notes').value.trim(),
+    status: "New",
+    text:false, email:false, call:false,
+    firstSeen: today, lastSeen: today,
+    city:"Houston"
+  };
+  if(row.price && row.orig && row.orig > row.price){
+    row.priceDrop = row.orig - row.price;
+    row.priceDropPct = Math.round((row.priceDrop/row.orig)*1000)/10;
+  }
+  DATA.push(row);
+  save();
+  document.getElementById('addModal').close();
+  render();
+  showToast("Property added");
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+function exportJSON(){
+  const blob = new Blob([JSON.stringify(DATA, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = "houston_deal_hunter_export.json";
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast("Exported JSON — send this file to Claude to save it centrally");
+}
+
+function importJSON(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try{
+      const incoming = JSON.parse(e.target.result);
+      if(!Array.isArray(incoming)) throw new Error("not an array");
+      DATA = incoming;
+      save();
+      render();
+      showToast("Imported " + incoming.length + " properties");
+    }catch(err){
+      alert("Could not import file: " + err.message);
+    }
+  };
+  reader.readAsText(file);
+  evt.target.value = "";
+}
+
+function exportCSV(){
+  const cols = ["score","address","zip","zillow","price","orig","priceDrop","priceDropPct","dom","distress","arv","repairs","mao","offer","agent","text","email","call","status","followUp","firstSeen","lastSeen","resurfacedReason","notes"];
+  const header = cols.join(",");
+  const lines = DATA.map(row => cols.map(c=>{
+    let v = row[c];
+    if(v === undefined || v === null) v = "";
+    v = String(v).replace(/"/g,'""');
+    return `"${v}"`;
+  }).join(","));
+  const csv = [header, ...lines].join("\n");
+  const blob = new Blob([csv], {type:"text/csv"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = "houston_deal_hunter_export.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+load();
+render();
+</script>
+
+</body>
+</html>
