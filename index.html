@@ -134,16 +134,23 @@
     border:1px solid var(--border); border-radius:12px; background:var(--panel); color:var(--text);
     padding:0; width:min(520px, 92vw);
   }
+  dialog#offerModal{width:min(680px, 94vw); max-height:88vh;}
   dialog::backdrop{background:rgba(0,0,0,.55);}
   .modalHead{padding:16px 20px; border-bottom:1px solid var(--border); font-weight:700;}
-  .modalBody{padding:16px 20px; display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .modalBody{padding:16px 20px; display:grid; grid-template-columns:1fr 1fr; gap:12px; overflow-y:auto; max-height:calc(88vh - 110px);}
   .modalBody .full{grid-column:1/-1;}
   .modalBody label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.3px; display:block; margin-bottom:4px;}
   .modalBody input, .modalBody select, .modalBody textarea{
     width:100%; background:var(--panel2); border:1px solid var(--border); color:var(--text);
     border-radius:8px; padding:8px 10px; font:inherit;
   }
+  .modalBody textarea[readonly]{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; line-height:1.5;}
+  .modalBody .checkRow{display:flex; align-items:center; height:100%;}
+  .modalBody .checkRow label{display:flex; align-items:center; gap:6px; margin:0; text-transform:none; font-size:13px; color:var(--text);}
+  .modalBody .checkRow input[type=checkbox]{width:auto;}
+  .copyBtn{padding:2px 8px; font-size:11px; float:right;}
   .modalFoot{padding:14px 20px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:8px;}
+  .offerBtn:hover{color:var(--accent); background:rgba(79,140,255,.12);}
 
   .toast{
     position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
@@ -163,6 +170,7 @@
     <div class="sub">Active SFR opportunities · Score, contact, and offer tracker · <span id="lastUpdated">no runs yet</span></div>
   </div>
   <div class="headerActions">
+    <button class="ghost" onclick="openMyInfoModal()">⚙ My Info</button>
     <button class="ghost" onclick="openAddModal()">+ Add Property</button>
     <button class="ghost" onclick="exportJSON()">Export JSON</button>
     <button class="ghost" onclick="document.getElementById('importFile').click()">Import JSON</button>
@@ -246,11 +254,54 @@
   </div>
 </dialog>
 
+<dialog id="myInfoModal">
+  <div class="modalHead">Your Contact Info</div>
+  <div class="modalBody">
+    <div class="full" style="color:var(--muted); font-size:12.5px;">Used to sign the offer text/email templates. Stored only in this browser.</div>
+    <div><label>Your Name</label><input id="mi_name" placeholder="Jane Smith"></div>
+    <div><label>Company / LLC</label><input id="mi_company" placeholder="Bayou Home Buyers LLC"></div>
+    <div><label>Phone</label><input id="mi_phone" placeholder="(713) 555-0123"></div>
+    <div><label>Email</label><input id="mi_email" placeholder="jane@bayouhomebuyers.com"></div>
+  </div>
+  <div class="modalFoot">
+    <button class="ghost" onclick="document.getElementById('myInfoModal').close()">Cancel</button>
+    <button class="primary" onclick="saveMyInfo()">Save</button>
+  </div>
+</dialog>
+
+<dialog id="offerModal">
+  <div class="modalHead" id="offerModalHead">Generate Offer</div>
+  <div class="modalBody">
+    <div class="full" id="offerPropLine" style="color:var(--muted); font-size:12.5px;"></div>
+    <div><label>Offer Price ($)</label><input id="o_price" type="number" placeholder="e.g. 155000"></div>
+    <div><label>Earnest Money ($)</label><input id="o_earnest" type="number" value="500"></div>
+    <div><label>Closing (days)</label><input id="o_closing" type="number" value="14"></div>
+    <div><label>Inspection Period (days)</label><input id="o_inspection" type="number" value="7"></div>
+    <div><label>Offer Expires (hours from now)</label><input id="o_expireHrs" type="number" value="48"></div>
+    <div class="checkRow"><label><input type="checkbox" id="o_assigns" checked> Buyer "and/or assigns" (wholesale)</label></div>
+    <div class="full"><label>Additional Terms (optional)</label><textarea id="o_extra" rows="2" placeholder="e.g. seller to leave appliances, rent-back requested, etc."></textarea></div>
+    <div class="full" style="border-top:1px solid var(--border); padding-top:12px; margin-top:2px;">
+      <button class="primary" onclick="generateOffer()">Generate Offer Text</button>
+      <span style="color:var(--muted); font-size:11.5px; margin-left:8px;">All terms — cash, as-is, fast close. Nothing is sent; copy/paste into GHL yourself.</span>
+    </div>
+    <div class="full" id="offerOutputs" style="display:none;">
+      <label>Short Text / SMS <button class="ghost copyBtn" onclick="copyBox('o_shortOut')">Copy</button></label>
+      <textarea id="o_shortOut" rows="7" readonly></textarea>
+      <label style="margin-top:12px;">Formal Email / Letter of Intent <button class="ghost copyBtn" onclick="copyBox('o_longOut')">Copy</button></label>
+      <textarea id="o_longOut" rows="16" readonly></textarea>
+    </div>
+  </div>
+  <div class="modalFoot">
+    <button class="ghost" onclick="document.getElementById('offerModal').close()">Close</button>
+  </div>
+</dialog>
+
 <div class="toast" id="toast"></div>
 
 <footer>
   Houston On-Market Deal Hunter — this board is a manual/collaborative tracker. Data you enter here (contact status, offers, notes) lives in this browser via local storage.
   Use <strong>Export JSON</strong> and send it back to Claude to save it into the project's canonical database, and to hand fresh data to Claude before your next morning run.
+  Set your contact info once via <strong>⚙ My Info</strong>, then use the 📝 button on any row to generate a cash/as-is/fast-close offer text and LOI — nothing is sent automatically, copy/paste into GHL yourself.
 </footer>
 
 <script>
@@ -399,7 +450,10 @@ function render(){
       <td>${row.lastSeen||"—"}</td>
       <td class="notes">${row.resurfacedReason||"—"}</td>
       <td class="notes"><input class="editable notesInput" value="${(row.notes||'').replace(/"/g,'&quot;')}" onchange="updateField('${row.id}','notes',this.value)"></td>
-      <td class="rowActions"><button class="iconBtn" title="Remove" onclick="removeRow('${row.id}')">✕</button></td>
+      <td class="rowActions">
+        <button class="iconBtn offerBtn" title="Generate Offer Text / LOI" onclick="openOfferModal('${row.id}')">📝</button>
+        <button class="iconBtn" title="Remove" onclick="removeRow('${row.id}')">✕</button>
+      </td>
     </tr>`;
   }).join('');
 }
@@ -518,6 +572,169 @@ function exportCSV(){
   a.href = url; a.download = "houston_deal_hunter_export.csv";
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// ---------- My Info (used to sign offer templates) ----------
+const MY_INFO_KEY = "houstonDealHunterMyInfo";
+function loadMyInfo(){
+  try{
+    const raw = localStorage.getItem(MY_INFO_KEY);
+    return raw ? JSON.parse(raw) : {name:"",company:"",phone:"",email:""};
+  }catch(e){ return {name:"",company:"",phone:"",email:""}; }
+}
+function openMyInfoModal(){
+  const my = loadMyInfo();
+  document.getElementById('mi_name').value = my.name||"";
+  document.getElementById('mi_company').value = my.company||"";
+  document.getElementById('mi_phone').value = my.phone||"";
+  document.getElementById('mi_email').value = my.email||"";
+  document.getElementById('myInfoModal').showModal();
+}
+function saveMyInfo(){
+  const my = {
+    name: document.getElementById('mi_name').value.trim(),
+    company: document.getElementById('mi_company').value.trim(),
+    phone: document.getElementById('mi_phone').value.trim(),
+    email: document.getElementById('mi_email').value.trim(),
+  };
+  localStorage.setItem(MY_INFO_KEY, JSON.stringify(my));
+  document.getElementById('myInfoModal').close();
+  showToast("Contact info saved");
+}
+
+// ---------- Offer generator (short SMS + formal LOI/email) ----------
+// Templates follow standard wholesale-offer conventions: cash / as-is / fast close,
+// proof-of-funds mention, small earnest money, waived financing & appraisal contingencies,
+// a short inspection period, an offer expiration window, and an "and/or assigns" disclosure.
+// Nothing here sends anything — these are copy/paste text blocks for you to paste into GHL.
+let OFFER_ROW_ID = null;
+
+function openOfferModal(id){
+  const row = DATA.find(d=>d.id===id);
+  if(!row) return;
+  OFFER_ROW_ID = id;
+  document.getElementById('offerModalHead').textContent = "Generate Offer — " + row.address;
+  document.getElementById('offerPropLine').textContent =
+    `${row.address}, ${row.city||"Houston"} ${row.zip||""} · List ${row.price?("$"+Number(row.price).toLocaleString()):"—"} · Agent: ${row.agent&&row.agent!=="UNKNOWN"?row.agent:"Unknown"}${row.brokerage&&row.brokerage!=="UNKNOWN"?" ("+row.brokerage+")":""}`;
+  document.getElementById('o_price').value = row.offer || row.mao || "";
+  document.getElementById('o_earnest').value = 500;
+  document.getElementById('o_closing').value = 14;
+  document.getElementById('o_inspection').value = 7;
+  document.getElementById('o_expireHrs').value = 48;
+  document.getElementById('o_assigns').checked = true;
+  document.getElementById('o_extra').value = "";
+  document.getElementById('offerOutputs').style.display = "none";
+  document.getElementById('offerModal').showModal();
+}
+
+function buildShortMessage(row, o, my){
+  const agentFirst = row.agent && row.agent !== "UNKNOWN" ? row.agent.split(" ")[0] : "there";
+  const lines = [];
+  lines.push(`Hi ${agentFirst}, this is ${my.name || "[Your Name]"}${my.company ? " with " + my.company : ""}.`);
+  lines.push(`I'd like to submit a cash offer on ${row.address}: $${Number(o.price).toLocaleString()}, as-is, ${o.closingDays}-day close, no financing or appraisal contingencies.`);
+  lines.push(`EMD $${Number(o.earnest).toLocaleString()}, ${o.inspectionDays}-day inspection period.${o.assigns ? " Buyer and/or assigns." : ""}`);
+  lines.push(`Proof of funds available on request. This offer is open through ${o.expiresText}.`);
+  if(o.extraTerms) lines.push(o.extraTerms);
+  lines.push(`Can you present this to your seller? Thank you!`);
+  const sig = [my.name, my.phone, my.email].filter(Boolean).join(" · ");
+  if(sig) lines.push(`— ${sig}`);
+  return lines.join("\n");
+}
+
+function buildLOI(row, o, my){
+  const today = new Date().toLocaleDateString();
+  const parts = [];
+  parts.push(`LETTER OF INTENT TO PURCHASE`);
+  parts.push(``);
+  parts.push(`Date: ${today}`);
+  parts.push(``);
+  parts.push(`Property: ${row.address}, ${row.city||"Houston"}, ${row.state||"TX"} ${row.zip||""}`);
+  if(row.mls && row.mls !== "UNKNOWN") parts.push(`MLS #: ${row.mls}`);
+  parts.push(``);
+  parts.push(`To: ${row.agent && row.agent !== "UNKNOWN" ? row.agent : "Listing Agent"}${row.brokerage && row.brokerage !== "UNKNOWN" ? ", " + row.brokerage : ""}`);
+  parts.push(``);
+  parts.push(`From: ${my.name || "[Your Name]"}${my.company ? ", " + my.company : ""}`);
+  if(my.phone) parts.push(`Phone: ${my.phone}`);
+  if(my.email) parts.push(`Email: ${my.email}`);
+  parts.push(``);
+  parts.push(`This letter outlines the terms under which Buyer is prepared to submit a formal purchase offer for the above-referenced property. This is a non-binding letter of intent, subject to a mutually executed purchase and sale agreement.`);
+  parts.push(``);
+  parts.push(`1. PURCHASE PRICE: $${Number(o.price).toLocaleString()}, all cash.`);
+  parts.push(``);
+  parts.push(`2. EARNEST MONEY: $${Number(o.earnest).toLocaleString()}, to be deposited with a licensed Texas title company within 3 business days of an executed contract.`);
+  parts.push(``);
+  parts.push(`3. CONDITION: Property to be purchased strictly AS-IS, WHERE-IS. Buyer may conduct a physical inspection for informational purposes only; no repairs will be requested of Seller.`);
+  parts.push(``);
+  parts.push(`4. FINANCING: All-cash offer. No financing contingency. Proof of funds available upon request.`);
+  parts.push(``);
+  parts.push(`5. APPRAISAL: Appraisal contingency waived.`);
+  parts.push(``);
+  parts.push(`6. INSPECTION PERIOD: ${o.inspectionDays} days from contract execution for Buyer's due diligence.`);
+  parts.push(``);
+  parts.push(`7. CLOSING: Target closing within ${o.closingDays} days of contract execution, at a title company of Buyer's choosing. Buyer can close sooner if Seller prefers.`);
+  parts.push(``);
+  parts.push(`8. TITLE & CLOSING COSTS: Buyer to pay standard closing costs and title fees per local custom.`);
+  if(o.assigns){
+    parts.push(``);
+    parts.push(`9. ASSIGNMENT: Buyer reserves the right to assign this contract to an affiliated entity or third party prior to closing ("Buyer and/or assigns").`);
+  }
+  parts.push(``);
+  parts.push(`This offer is open for acceptance through ${o.expiresText}. We would welcome the opportunity to discuss further or adjust terms based on Seller's needs, and can move quickly to a signed contract.`);
+  if(o.extraTerms){
+    parts.push(``);
+    parts.push(`Additional notes: ${o.extraTerms}`);
+  }
+  parts.push(``);
+  parts.push(`Thank you for your time — please let us know what we can do to help your client.`);
+  parts.push(``);
+  parts.push(my.name || "[Your Name]");
+  if(my.company) parts.push(my.company);
+  if(my.phone) parts.push(my.phone);
+  if(my.email) parts.push(my.email);
+  return parts.join("\n");
+}
+
+function generateOffer(){
+  const row = DATA.find(d=>d.id===OFFER_ROW_ID);
+  if(!row) return;
+  const price = Number(document.getElementById('o_price').value);
+  if(!price){ alert("Enter an offer price."); return; }
+  const o = {
+    price,
+    earnest: Number(document.getElementById('o_earnest').value) || 500,
+    closingDays: Number(document.getElementById('o_closing').value) || 14,
+    inspectionDays: Number(document.getElementById('o_inspection').value) || 7,
+    assigns: document.getElementById('o_assigns').checked,
+    extraTerms: document.getElementById('o_extra').value.trim(),
+  };
+  const expireHrs = Number(document.getElementById('o_expireHrs').value) || 48;
+  const expireDate = new Date(Date.now() + expireHrs * 3600 * 1000);
+  o.expiresText = expireDate.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + " at " + expireDate.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+
+  const my = loadMyInfo();
+
+  document.getElementById('o_shortOut').value = buildShortMessage(row, o, my);
+  document.getElementById('o_longOut').value = buildLOI(row, o, my);
+  document.getElementById('offerOutputs').style.display = "block";
+
+  row.offer = price;
+  save();
+  render();
+}
+
+function copyBox(id){
+  const el = document.getElementById(id);
+  el.select();
+  el.setSelectionRange(0, 999999);
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(el.value).then(()=>showToast("Copied to clipboard")).catch(()=>{
+      document.execCommand('copy');
+      showToast("Copied to clipboard");
+    });
+  } else {
+    document.execCommand('copy');
+    showToast("Copied to clipboard");
+  }
 }
 
 load();
