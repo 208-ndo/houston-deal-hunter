@@ -70,6 +70,10 @@
     padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; white-space:nowrap;
   }
   tbody tr:hover{background:rgba(255,255,255,.02);}
+  tbody tr.stale-warn{background:rgba(230,180,80,.06);}
+  tbody tr.stale-warn:hover{background:rgba(230,180,80,.1);}
+  tbody tr.stale-hot{background:rgba(241,107,107,.08);}
+  tbody tr.stale-hot:hover{background:rgba(241,107,107,.13);}
   td.addr{white-space:normal; max-width:220px; position:sticky; left:0; background:var(--bg); z-index:1;}
   tbody tr:hover td.addr{background:#171a22;}
   td.notes, td.distress{white-space:normal; max-width:200px;}
@@ -221,6 +225,7 @@
         <th>Text</th>
         <th>Email</th>
         <th>Call</th>
+        <th>Last Contact</th>
         <th>Status</th>
         <th>Follow-Up</th>
         <th>First Seen</th>
@@ -297,6 +302,21 @@
   </div>
   <div class="modalFoot">
     <button class="ghost" onclick="document.getElementById('offerModal').close()">Close</button>
+  </div>
+</dialog>
+
+<dialog id="logModal">
+  <div class="modalHead">Activity Log — <span id="logModalAddr"></span></div>
+  <div class="modalBody" style="grid-template-columns:1fr; max-height:calc(88vh - 110px);">
+    <div class="full">
+      <label>New entry</label>
+      <textarea id="logNewNote" rows="2" placeholder="e.g. Called agent, no answer. Left voicemail."></textarea>
+      <button class="primary" style="margin-top:8px;" onclick="addLogEntry()">Add Note</button>
+    </div>
+    <div class="full" id="logEntries" style="border-top:1px solid var(--border); padding-top:10px; margin-top:4px;"></div>
+  </div>
+  <div class="modalFoot">
+    <button class="ghost" onclick="document.getElementById('logModal').close(); render();">Close</button>
   </div>
 </dialog>
 
@@ -441,7 +461,9 @@ function render(){
 
   tbody.innerHTML = rows.map(row=>{
     const stCls = STATUS_CLASS[row.status] || "b-new";
-    return `<tr>
+    const lc = lastContactInfo(row);
+    const rowCls = lc.staleness === "hot" ? "stale-hot" : lc.staleness === "warn" ? "stale-warn" : "";
+    return `<tr class="${rowCls}">
       <td><span class="score ${scoreClass(row.score)}">${row.score ?? "—"}</span></td>
       <td class="addr"><strong>${row.address||"UNKNOWN"}</strong><br><span style="color:var(--muted);font-size:11.5px">${row.city||"Houston"}, TX</span></td>
       <td>${row.zip||"—"}</td>
@@ -468,6 +490,7 @@ function render(){
       <td>${contactBtn(row,'text')}</td>
       <td>${contactBtn(row,'email')}</td>
       <td>${contactBtn(row,'call')}</td>
+      <td style="color:${lc.color}; font-weight:${lc.staleness!=='none'?700:400}; white-space:nowrap;">${lc.label}</td>
       <td>
         <select class="statusSel" onchange="updateField('${row.id}','status',this.value)">
           ${STATUS_OPTIONS.map(s=>`<option value="${s}" ${s===row.status?'selected':''}>${s}</option>`).join('')}
@@ -477,7 +500,12 @@ function render(){
       <td>${row.firstSeen||"—"}</td>
       <td>${row.lastSeen||"—"}</td>
       <td class="notes">${row.resurfacedReason||"—"}</td>
-      <td class="notes"><input class="editable notesInput" value="${(row.notes||'').replace(/"/g,'&quot;')}" onchange="updateField('${row.id}','notes',this.value)"></td>
+      <td class="notes">
+        <div style="display:flex; align-items:center; gap:2px;">
+          <input class="editable notesInput" value="${(row.notes||'').replace(/"/g,'&quot;')}" onchange="updateField('${row.id}','notes',this.value)">
+          <button class="iconBtn" title="Activity log${row.activityLog&&row.activityLog.length?' ('+row.activityLog.length+' entries)':' (empty)'}" onclick="openLogModal('${row.id}')">🗒${row.activityLog&&row.activityLog.length?`<sup style="font-size:9px">${row.activityLog.length}</sup>`:''}</button>
+        </div>
+      </td>
       <td class="rowActions">
         <button class="iconBtn" title="Remove" onclick="removeRow('${row.id}')">✕</button>
       </td>
@@ -529,9 +557,43 @@ function toggleContact(id, field){
   const row = DATA.find(d=>d.id===id);
   if(!row) return;
   row[field] = !row[field];
-  row[field+"_ts"] = row[field] ? new Date().toLocaleDateString() : "";
+  row[field+"_ts"] = row[field] ? new Date().toISOString() : "";
   save();
   render();
+}
+
+// ---------- Last-contact staleness (added 2026-08-21) ----------
+// Looks at the most recent of text_ts/email_ts/call_ts and flags rows that
+// have gone quiet: amber at 3+ days, red at 7+ days, so cold leads pop out
+// without having to scan the whole board every morning.
+const STALE_WARN_DAYS = 3;
+const STALE_HOT_DAYS = 7;
+const CLOSED_STATUSES = ["Accepted","Dead","Declined"];
+
+function lastContactDate(row){
+  const dates = ["text_ts","email_ts","call_ts"]
+    .map(f=>row[f])
+    .filter(Boolean)
+    .map(s=>new Date(s))
+    .filter(d=>!isNaN(d));
+  if(!dates.length) return null;
+  return new Date(Math.max(...dates.map(d=>d.getTime())));
+}
+
+function daysSince(date){
+  if(!date) return null;
+  return Math.floor((Date.now() - date.getTime()) / 86400000);
+}
+
+function lastContactInfo(row){
+  const last = lastContactDate(row);
+  if(!last) return {days:null, label:"—", color:"var(--muted)", staleness:"none"};
+  const days = daysSince(last);
+  const closed = CLOSED_STATUSES.includes(row.status);
+  if(closed) return {days, label:`${days}d ago`, color:"var(--muted)", staleness:"none"};
+  if(days >= STALE_HOT_DAYS) return {days, label:`⚠ ${days}d — no reply`, color:"var(--red)", staleness:"hot"};
+  if(days >= STALE_WARN_DAYS) return {days, label:`${days}d — check in`, color:"var(--amber)", staleness:"warn"};
+  return {days, label:`${days}d ago`, color:"var(--green)", staleness:"none"};
 }
 
 function removeRow(id){
@@ -539,6 +601,56 @@ function removeRow(id){
   DATA = DATA.filter(d=>d.id!==id);
   save();
   render();
+}
+
+// ---------- Activity log (added 2026-08-21) ----------
+// A timestamped, append-only log per property -- separate from the single
+// free-text `notes` field (which stays as-is, e.g. for DealMachine assumptions).
+// This is for a running work log: calls made, what was said, next steps.
+let LOG_ROW_ID = null;
+
+function escapeHtml(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function openLogModal(id){
+  const row = DATA.find(d=>d.id===id);
+  if(!row) return;
+  LOG_ROW_ID = id;
+  document.getElementById('logModalAddr').textContent = row.address || "";
+  document.getElementById('logNewNote').value = "";
+  renderLogEntries(row);
+  document.getElementById('logModal').showModal();
+}
+
+function renderLogEntries(row){
+  const log = row.activityLog || [];
+  const el = document.getElementById('logEntries');
+  if(!log.length){
+    el.innerHTML = `<div style="color:var(--muted); font-size:12.5px;">No log entries yet. Add one above -- e.g. "Texted agent 8/21, no reply yet."</div>`;
+    return;
+  }
+  el.innerHTML = log.slice().reverse().map(e => `
+    <div style="border-bottom:1px solid var(--border); padding:8px 0;">
+      <div style="color:var(--muted); font-size:11px;">${escapeHtml(new Date(e.ts).toLocaleString())}</div>
+      <div style="font-size:13px; white-space:pre-wrap; margin-top:2px;">${escapeHtml(e.text)}</div>
+    </div>
+  `).join('');
+}
+
+function addLogEntry(){
+  const row = DATA.find(d=>d.id===LOG_ROW_ID);
+  if(!row) return;
+  const box = document.getElementById('logNewNote');
+  const text = box.value.trim();
+  if(!text) return;
+  if(!row.activityLog) row.activityLog = [];
+  row.activityLog.push({ts: new Date().toISOString(), text});
+  save();
+  box.value = "";
+  renderLogEntries(row);
+  showToast("Note added");
 }
 
 function openAddModal(){
