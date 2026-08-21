@@ -176,6 +176,7 @@
     <button class="ghost" onclick="document.getElementById('importFile').click()">Import JSON</button>
     <input type="file" id="importFile" accept="application/json" style="display:none" onchange="importJSON(event)">
     <button class="ghost" onclick="exportCSV()">Export CSV</button>
+    <button class="ghost" onclick="resetToLatest()" title="Discard any locally-cached edits on this device and reload the latest data pushed from Claude">🔄 Reset to Latest</button>
   </div>
 </header>
 
@@ -319,6 +320,13 @@ const SEED_DATA = [{"id": "p_28438474", "address": "9114 Golden Sunshine Dr", "c
 let DATA = [];
 
 function load(){
+  const params = new URLSearchParams(location.search);
+  if(params.get('reset') === '1'){
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(UPDATED_KEY);
+    // strip the query string so a later manual refresh doesn't keep wiping local edits
+    history.replaceState(null, '', location.pathname);
+  }
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     DATA = raw ? JSON.parse(raw) : SEED_DATA;
@@ -327,6 +335,14 @@ function load(){
   document.getElementById('lastUpdated').textContent = upd ? ("last updated " + upd) : ("morning hunt run " + RUN_DATE + " — no manual edits yet");
   const sel = document.getElementById('statusFilter');
   sel.innerHTML = '<option value="">All statuses</option>' + STATUS_OPTIONS.map(s=>`<option value="${s}">${s}</option>`).join('');
+}
+
+function resetToLatest(){
+  if(confirm("This clears any locally-cached data on THIS device/browser only and reloads the latest data. Any edits you made here that you haven't exported will be lost. Continue?")){
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(UPDATED_KEY);
+    location.reload();
+  }
 }
 
 function save(){
