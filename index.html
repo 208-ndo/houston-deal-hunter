@@ -284,7 +284,7 @@
     <div class="full" id="offerPropLine" style="color:var(--muted); font-size:12.5px;"></div>
     <div><label>Offer Price ($)</label><input id="o_price" type="number" placeholder="e.g. 155000"></div>
     <div><label>Earnest Money ($)</label><input id="o_earnest" type="number" value="500"></div>
-    <div><label>Closing (days)</label><input id="o_closing" type="number" value="14"></div>
+    <div><label>Closing (days)</label><input id="o_closing" type="number" value="30"></div>
     <div><label>Inspection Period (days)</label><input id="o_inspection" type="number" value="7"></div>
     <div><label>Offer Expires (hours from now)</label><input id="o_expireHrs" type="number" value="48"></div>
     <div class="checkRow"><label><input type="checkbox" id="o_assigns" checked> Buyer "and/or assigns" (wholesale)</label></div>
@@ -789,7 +789,7 @@ function openOfferModal(id){
     `${row.address}, ${row.city||"Houston"} ${row.zip||""} · List ${row.price?("$"+Number(row.price).toLocaleString()):"—"} · Agent: ${row.agent&&row.agent!=="UNKNOWN"?row.agent:"Unknown"}${row.brokerage&&row.brokerage!=="UNKNOWN"?" ("+row.brokerage+")":""}`;
   document.getElementById('o_price').value = row.offer || row.mao || "";
   document.getElementById('o_earnest').value = 500;
-  document.getElementById('o_closing').value = 14;
+  document.getElementById('o_closing').value = 30;
   document.getElementById('o_inspection').value = 10;
   document.getElementById('o_expireHrs').value = 48;
   document.getElementById('o_assigns').checked = true;
@@ -812,8 +812,17 @@ function compsLine(row){
   return `With comps around ${arvTxt}, `;
 }
 
+// Casual first-name-only greeting -- deliberately drops last name, TREC #,
+// and any other parenthetical (e.g. "Ruebin Williams (TREC #0811942)" -> "Ruebin").
+// Used in both templates so the actual outgoing text reads like a real person
+// wrote it, even though the full legal name/license stays in the database.
+function agentFirstName(row){
+  if(!row.agent || row.agent === "UNKNOWN") return "there";
+  return row.agent.trim().split(" ")[0];
+}
+
 function buildShortMessage(row, o, my){
-  const agentFirst = row.agent && row.agent !== "UNKNOWN" ? row.agent.split(" ")[0] : "there";
+  const agentFirst = agentFirstName(row);
   const lines = [];
   lines.push(`Hey ${agentFirst}, I ran the numbers on ${row.address}.`);
   lines.push(``);
@@ -831,22 +840,22 @@ function buildShortMessage(row, o, my){
   lines.push(`• Offer open through ${o.expiresText}`);
   lines.push(``);
   lines.push(`Please present this to your seller and let me know — I can send over the agreement once I hear back.`);
-  const sigName = [my.name, my.company].filter(Boolean).join(" / ");
+  const sigName = [my.name || "[Add your name in ⚙ My Info]", my.company].filter(Boolean).join(" / ");
   const sigContact = [my.phone, my.email].filter(Boolean).join(" · ");
-  if(sigName || sigContact){
+  {
     lines.push(``);
-    if(sigName) lines.push(`— ${sigName}`);
+    lines.push(`— ${sigName}`);
     if(sigContact) lines.push(sigContact);
   }
   return lines.join("\n");
 }
 
 function buildLOI(row, o, my){
-  const agentName = row.agent && row.agent !== "UNKNOWN" ? row.agent : "there";
+  const agentFirst = agentFirstName(row);
   const parts = [];
   parts.push(`Subject: Cash Offer for ${row.address}, ${row.city||"Houston"}, ${row.state||"TX"} ${row.zip||""}`);
   parts.push(``);
-  parts.push(`Hi ${agentName},`);
+  parts.push(`Hi ${agentFirst},`);
   parts.push(``);
   parts.push(`Thanks for your time on ${row.address}${row.mls && row.mls !== "UNKNOWN" ? " (MLS #" + row.mls + ")" : ""}.`);
   parts.push(``);
@@ -867,7 +876,7 @@ function buildLOI(row, o, my){
   parts.push(`If that works, I'll send over the agreement and take care of everything on my end — please let us know what we can do to help your client.`);
   parts.push(``);
   parts.push(`Talk soon,`);
-  const sigName = [my.name || "[Your Name]", my.company].filter(Boolean).join(" / ");
+  const sigName = [my.name || "[Add your name in ⚙ My Info]", my.company].filter(Boolean).join(" / ");
   parts.push(sigName);
   const sigContact = [my.phone, my.email].filter(Boolean).join(" · ");
   if(sigContact) parts.push(sigContact);
@@ -882,7 +891,7 @@ function generateOffer(){
   const o = {
     price,
     earnest: Number(document.getElementById('o_earnest').value) || 500,
-    closingDays: Number(document.getElementById('o_closing').value) || 14,
+    closingDays: Number(document.getElementById('o_closing').value) || 30,
     inspectionDays: Number(document.getElementById('o_inspection').value) || 7,
     assigns: document.getElementById('o_assigns').checked,
     extraTerms: document.getElementById('o_extra').value.trim(),
@@ -900,6 +909,10 @@ function generateOffer(){
   row.offer = price;
   save();
   render();
+
+  if(!my.name){
+    showToast("Tip: click ⚙ My Info and add your name so it signs offers automatically");
+  }
 }
 
 function copyBox(id){
