@@ -460,7 +460,11 @@ function render(){
           <button class="iconBtn offerBtn" title="Generate Offer Text / LOI" onclick="openOfferModal('${row.id}')">📝</button>
         </div>
       </td>
-      <td class="notes" style="max-width:140px">${row.agent||"UNKNOWN"}</td>
+      <td class="notes" style="max-width:150px">
+        <div>${row.agent||"UNKNOWN"}</div>
+        ${row.agentPhone && row.agentPhone!=="UNKNOWN" ? `<div style="color:var(--muted);font-size:11px;margin-top:2px"><a href="tel:${row.agentPhone.replace(/[^0-9+]/g,'')}" style="color:var(--muted);text-decoration:none" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">${row.agentPhone}</a></div>` : ''}
+        ${row.agentEmail && row.agentEmail!=="UNKNOWN" ? `<div style="color:var(--muted);font-size:11px;margin-top:2px"><a href="mailto:${row.agentEmail}" style="color:var(--muted);text-decoration:none" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">${row.agentEmail}</a></div>` : ''}
+      </td>
       <td>${contactBtn(row,'text')}</td>
       <td>${contactBtn(row,'email')}</td>
       <td>${contactBtn(row,'call')}</td>
@@ -715,10 +719,12 @@ function buildShortMessage(row, o, my){
   lines.push(`• Offer open through ${o.expiresText}`);
   lines.push(``);
   lines.push(`Please present this to your seller and let me know — I can send over the agreement once I hear back.`);
-  const sig = [my.name, my.phone, my.email].filter(Boolean).join(" · ");
-  if(sig){
+  const sigName = [my.name, my.company].filter(Boolean).join(" / ");
+  const sigContact = [my.phone, my.email].filter(Boolean).join(" · ");
+  if(sigName || sigContact){
     lines.push(``);
-    lines.push(`— ${sig}`);
+    if(sigName) lines.push(`— ${sigName}`);
+    if(sigContact) lines.push(sigContact);
   }
   return lines.join("\n");
 }
@@ -749,10 +755,10 @@ function buildLOI(row, o, my){
   parts.push(`If that works, I'll send over the agreement and take care of everything on my end — please let us know what we can do to help your client.`);
   parts.push(``);
   parts.push(`Talk soon,`);
-  parts.push(my.name || "[Your Name]");
-  if(my.company) parts.push(my.company);
-  if(my.phone) parts.push(my.phone);
-  if(my.email) parts.push(my.email);
+  const sigName = [my.name || "[Your Name]", my.company].filter(Boolean).join(" / ");
+  parts.push(sigName);
+  const sigContact = [my.phone, my.email].filter(Boolean).join(" · ");
+  if(sigContact) parts.push(sigContact);
   return parts.join("\n");
 }
 
