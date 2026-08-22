@@ -197,6 +197,13 @@
   </div>
 </header>
 
+<div class="assignTargetBar" style="padding:6px 20px; font-size:12px; color:var(--muted); border-bottom:1px solid var(--border); background:var(--panel);">
+  <strong style="color:var(--green)">TARGET ASSIGNMENT: $25,000</strong>
+  <span style="margin:0 8px;">|</span>
+  <strong style="color:var(--red)">MINIMUM ASSIGNMENT: $5,000</strong>
+  <span style="margin-left:8px; color:var(--muted);">(the floor set by Hard Max = Buyer MAO − $5,000)</span>
+</div>
+
 <div class="stats" id="stats"></div>
 
 <div class="controls">
@@ -359,6 +366,8 @@ const STATUS_CLASS = {
   "No Response":"b-noresponse","Counter":"b-counter","Declined":"b-declined","Accepted":"b-accepted",
   "Dead":"b-dead","Follow-Up":"b-followup"
 };
+const TARGET_ASSIGNMENT = 25000;
+const MIN_ASSIGNMENT = 5000;
 const STORAGE_KEY = "houstonDealHunterData";
 const UPDATED_KEY = "houstonDealHunterUpdated";
 const RUN_DATE = "2026-08-20";
@@ -401,14 +410,28 @@ function save(){
 }
 
 
+// Two distinct numbers, per Michael's 2026-08-22 correction:
+//  - TARGET_ASSIGNMENT ($25,000, fixed) is what we're aiming for -- Buyer MAO minus the Target
+//    Contract price, i.e. the assignment fee if the seller accepts at our target number.
+//  - "Potential fee" is the LIVE number: Buyer MAO minus whatever price is actually in play right
+//    now (a typed Current Offer, or the Opening Offer if nothing's been typed yet). This is real,
+//    useful information -- what you'd actually walk away with if this exact price gets accepted --
+//    and must NEVER be replaced by the $25K target; it's labeled and shown alongside it instead.
+function assignmentStatus(buyerMao, hardMax, potential){
+  if(potential < MIN_ASSIGNMENT) return {icon:"⛔", label:"BELOW $5K MIN", color:"var(--red)"};
+  if(potential <= MIN_ASSIGNMENT * 2) return {icon:"🔴", label:"NEAR HARD MAX", color:"var(--red)"};
+  if(potential < TARGET_ASSIGNMENT) return {icon:"⚠️", label:"", color:"var(--amber)"};
+  return {icon:"🟢", label:"", color:"var(--green)"};
+}
 function projectedAssignmentLabel(row){
   const bm = Number(row.buyerMao);
   const priceRaw = row.offer !== "" && row.offer !== null && row.offer !== undefined ? row.offer : row.openingOffer;
   const price = Number(priceRaw);
   if(!bm || !price || isNaN(bm) || isNaN(price)) return "";
-  const assign = bm - price;
-  const color = assign < 5000 ? "var(--red)" : (assign < 15000 ? "var(--amber)" : "var(--green)");
-  return `<span style="color:${color}">Assign @ $${price.toLocaleString()}: $${assign.toLocaleString()}</span>`;
+  const potential = bm - price;
+  const st = assignmentStatus(bm, Number(row.hardMax), potential);
+  const label = st.label ? ` ${st.icon} ${st.label}` : ` ${st.icon}`;
+  return `<span style="color:${st.color}">Target: $${TARGET_ASSIGNMENT.toLocaleString()} · Potential @ $${price.toLocaleString()}: $${potential.toLocaleString()}${label}</span>`;
 }
 const UW_STRATEGY_COLORS = {
   "Flip": "var(--accent)",
@@ -986,13 +1009,14 @@ function updateAssignPreview(){
   const price = Number(document.getElementById('o_price').value);
   const bm = Number(row.buyerMao);
   if(!price || !bm){ el.textContent = ''; return; }
-  const assign = bm - price;
+  const potential = bm - price;
   const hardMax = Number(row.hardMax);
+  const st = assignmentStatus(bm, hardMax, potential);
   let warn = '';
   if(hardMax && price > hardMax) warn = ' ⚠ ABOVE HARD MAX';
-  else if(assign < 5000) warn = ' 🚫 BELOW $5K MINIMUM';
-  const color = assign < 5000 ? 'var(--red)' : (assign < 15000 ? 'var(--amber)' : 'var(--green)');
-  el.innerHTML = `Buyer MAO $${bm.toLocaleString()} − Contract $${price.toLocaleString()} = <span style="color:${color};font-weight:700">Projected Assignment: $${assign.toLocaleString()}</span>${warn}`;
+  else if(st.label) warn = ` ${st.icon} ${st.label}`;
+  else if(st.icon === '⚠️') warn = ' ⚠️ below target';
+  el.innerHTML = `Buyer MAO $${bm.toLocaleString()} − Contract $${price.toLocaleString()} = <span style="color:${st.color};font-weight:700">Potential fee: $${potential.toLocaleString()}</span> <span style="color:var(--muted)">(Target fee: $${TARGET_ASSIGNMENT.toLocaleString()})</span>${warn}`;
 }
 
 function openOfferModal(id){
