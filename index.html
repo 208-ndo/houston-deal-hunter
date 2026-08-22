@@ -126,6 +126,8 @@
   .editable:hover, .editable:focus{border-color:var(--border); background:var(--panel2); outline:none;}
   .editable.wide{width:150px;}
   .editable.notesInput{width:180px;}
+  .editable.agentName{width:160px;}
+  .editable.agentContact{width:135px;}
 
   a.zlink{color:var(--accent); text-decoration:none; font-weight:600;}
   a.zlink:hover{text-decoration:underline;}
@@ -507,14 +509,14 @@ function render(){
           <button class="iconBtn offerBtn" title="Generate Offer Text / LOI" onclick="openOfferModal('${row.id}')">📝</button>
         </div>
       </td>
-      <td class="notes" style="max-width:170px">
-        <input class="editable" style="width:100%" value="${(row.agent&&row.agent!=="UNKNOWN"?row.agent:"").replace(/"/g,'&quot;')}" placeholder="Agent name" onchange="updateField('${row.id}','agent',this.value)">
+      <td class="notes" style="max-width:210px">
+        <input class="editable agentName" value="${(row.agent&&row.agent!=="UNKNOWN"?row.agent:"").replace(/"/g,'&quot;')}" placeholder="Agent name" onchange="updateField('${row.id}','agent',this.value)">
         <div style="display:flex; align-items:center; gap:3px; margin-top:2px;">
-          <input class="editable" style="width:100%; font-size:11px" value="${(row.agentPhone&&row.agentPhone!=="UNKNOWN"?row.agentPhone:"").replace(/"/g,'&quot;')}" placeholder="phone" onchange="updateField('${row.id}','agentPhone',this.value)">
+          <input class="editable agentContact" style="font-size:11px" value="${(row.agentPhone&&row.agentPhone!=="UNKNOWN"?row.agentPhone:"").replace(/"/g,'&quot;')}" placeholder="phone" onchange="updateField('${row.id}','agentPhone',this.value)">
           ${row.agentPhone && row.agentPhone!=="UNKNOWN" ? `<a href="tel:${row.agentPhone.replace(/[^0-9+]/g,'')}" title="Call ${row.agentPhone}" style="color:var(--muted);text-decoration:none;flex-shrink:0" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">📞</a>` : ''}
         </div>
         <div style="display:flex; align-items:center; gap:3px; margin-top:2px;">
-          <input class="editable" style="width:100%; font-size:11px" value="${(row.agentEmail&&row.agentEmail!=="UNKNOWN"?row.agentEmail:"").replace(/"/g,'&quot;')}" placeholder="email" onchange="updateField('${row.id}','agentEmail',this.value)">
+          <input class="editable agentContact" style="font-size:11px" value="${(row.agentEmail&&row.agentEmail!=="UNKNOWN"?row.agentEmail:"").replace(/"/g,'&quot;')}" placeholder="email" onchange="updateField('${row.id}','agentEmail',this.value)">
           ${row.agentEmail && row.agentEmail!=="UNKNOWN" ? `<a href="mailto:${row.agentEmail}" title="Email ${row.agentEmail}" style="color:var(--muted);text-decoration:none;flex-shrink:0" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">✉️</a>` : ''}
         </div>
       </td>
