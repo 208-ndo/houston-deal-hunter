@@ -314,6 +314,10 @@
     <div class="full" id="offerPropLine" style="color:var(--muted); font-size:12.5px;"></div>
     <div><label>Offer Price ($)</label><input id="o_price" type="number" placeholder="e.g. 155000" oninput="updateAssignPreview()"></div>
     <div class="full" id="assignPreview" style="color:var(--muted); font-size:12px; margin-top:-8px;"></div>
+    <div class="full" id="guardrailBanner" style="display:none; font-size:11.5px; padding:8px 10px; border-radius:6px; margin-top:2px; line-height:1.5;"></div>
+    <div class="full checkRow" id="guardrailOverrideRow" style="display:none;">
+      <label><input type="checkbox" id="o_override" onchange="updateGuardrailBanner()"> I've reviewed this and want to generate the text anyway</label>
+    </div>
     <div><label>Earnest Money ($)</label><input id="o_earnest" type="number" value="500"></div>
     <div><label>Closing (days)</label><input id="o_closing" type="number" value="30"></div>
     <div><label>Inspection Period (days)</label><input id="o_inspection" type="number" value="7"></div>
@@ -321,7 +325,7 @@
     <div class="checkRow"><label><input type="checkbox" id="o_assigns" checked> Buyer "and/or assigns" (wholesale)</label></div>
     <div class="full"><label>Additional Terms (optional)</label><textarea id="o_extra" rows="2" placeholder="e.g. seller to leave appliances, rent-back requested, etc."></textarea></div>
     <div class="full" style="border-top:1px solid var(--border); padding-top:12px; margin-top:2px;">
-      <button class="primary" onclick="generateOffer()">Generate Offer Text</button>
+      <button class="primary" id="generateOfferBtn" onclick="generateOffer()">Generate Offer Text</button>
       <span style="color:var(--muted); font-size:11.5px; margin-left:8px;">All terms — cash, as-is, fast close. Nothing is sent; copy/paste into GHL yourself.</span>
     </div>
     <div class="full" id="offerOutputs" style="display:none;">
@@ -417,6 +421,100 @@ function save(){
 //    now (a typed Current Offer, or the Opening Offer if nothing's been typed yet). This is real,
 //    useful information -- what you'd actually walk away with if this exact price gets accepted --
 //    and must NEVER be replaced by the $25K target; it's labeled and shown alongside it instead.
+// ---------------------------------------------------------------------------
+// Master Underwriting + Offer Engine guardrails (Michael, 2026-08-22 v2 spec).
+// Mirrors PART 11 "CRITICAL OFFER GUARDRAILS" and PART 14 "VALIDATE OFFER" from
+// the Master Underwriting + Offer Engine Prompt. These are hard, CODE-level
+// checks -- even if the AI/Claude underwriting made a mistake, the app itself
+// refuses to treat a bad number as ready-to-send. See claude/dashboard-workflow.md
+// for the full audit against that prompt.
+function validateOffer(row, priceOverride){
+  const reasons = [];
+  const priceRaw = (priceOverride !== undefined && priceOverride !== null && priceOverride !== "")
+    ? priceOverride : row.openingOffer;
+  const price = Number(priceRaw);
+  const list = Number(row.price);
+  const buyerMao = Number(row.buyerMao);
+  const targetContract = Number(row.mao);
+  const hardMax = Number(row.hardMax);
+
+  // RULE 7 -- missing data
+  if(!row.address) reasons.push("Missing property address");
+  if(!row.agent || row.agent === "UNKNOWN") reasons.push("Missing agent contact");
+  if(!buyerMao) reasons.push("Missing Buyer MAO");
+  if(!priceRaw && priceRaw !== 0) reasons.push("Missing Opening Offer / price");
+  if(!list) reasons.push("Missing current list price");
+
+  // RULE 6 -- low ARV confidence
+  if(row.arvConfidence === "Low") reasons.push("ARV Confidence is LOW -- do not auto-send offer or LOI");
+
+  // ladder integrity (should always hold if the formula was applied correctly --
+  // a violation here means the underlying data is corrupt/stale, not just a bad price)
+  if(buyerMao && hardMax && hardMax > buyerMao) reasons.push("Hard Max is above Buyer MAO (data error)");
+  if(hardMax && targetContract && targetContract > hardMax) reasons.push("Target Contract is above Hard Max (data error)");
+
+  if(price && list){
+    // RULE 1/2 -- never offer at/above current asking price
+    if(price >= list) reasons.push("Opening Offer is at/above current list price ($" + list.toLocaleString() + ")");
+  }
+  if(price && targetContract && price > targetContract){
+    reasons.push("Offer price ($" + price.toLocaleString() + ") is above Target Contract ($" + targetContract.toLocaleString() + ")");
+  }
+  if(price && buyerMao){
+    // RULE 5 -- never above Buyer MAO / Hard Max; PART 13 -- below-$5K-minimum stop
+    if(price > buyerMao) reasons.push("Offer price is above Buyer MAO");
+    else if(hardMax && price > hardMax) reasons.push("Offer price is above Hard Max");
+    const potential = buyerMao - price;
+    if(potential < MIN_ASSIGNMENT) reasons.push("Potential assignment ($" + potential.toLocaleString() + ") is below the $" + MIN_ASSIGNMENT.toLocaleString() + " minimum");
+  }
+  if(price < 0) reasons.push("Offer price is negative");
+
+  let status = reasons.length ? "MANUAL_REVIEW" : "READY";
+  if(row.underwritingStrategy === "Pass") status = "PASS";
+  return {status, reasons};
+}
+
+// PART 12 -- Opening Offer % of List (informational only, never a block)
+function offerPctOfList(row){
+  const price = Number(row.openingOffer);
+  const list = Number(row.price);
+  if(!price || !list) return null;
+  return price / list;
+}
+function offerPctBadge(row){
+  const pct = offerPctOfList(row);
+  if(pct === null) return "";
+  const pctTxt = Math.round(pct*100) + "% of list";
+  let color = "var(--muted)";
+  if(pct >= 0.85) color = "var(--amber)";
+  else if(pct < 0.70) color = "var(--green)";
+  return `<span style="font-size:10.5px;color:${color}" title="Opening Offer as a % of current list price -- informational only, never auto-rejected for being aggressive">${pctTxt}</span>`;
+}
+
+// PART 11 RULE 3/4 -- "DEAL WORKS AT ASK" / "LIST PRICE IS BELOW HARD MAX" callouts.
+// Informational only -- the opening offer we actually lead with stays discounted
+// (see RULE 3: "still use a discounted opening offer unless manually instructed otherwise").
+function dealAtAskBadge(row){
+  const list = Number(row.price);
+  const hardMax = Number(row.hardMax);
+  const buyerMao = Number(row.buyerMao);
+  if(!list || !hardMax || !buyerMao) return "";
+  if(list > hardMax) return "";
+  const assignAtList = buyerMao - list;
+  if(assignAtList >= TARGET_ASSIGNMENT){
+    return `<div style="font-size:10.5px;color:var(--green);font-weight:700" title="Potential assignment if purchased at full list price">🟢 STRONG DEAL AT ASK -- up to $${assignAtList.toLocaleString()}</div>`;
+  }
+  return `<div style="font-size:10.5px;color:var(--green)" title="List price already sits at or below our Hard Max">LIST ≤ HARD MAX</div>`;
+}
+
+// Required dashboard output (PART 16): "Manual Review Flag"
+function manualReviewBadge(row){
+  const v = validateOffer(row);
+  if(v.status === "READY") return '<span style="font-size:10.5px;color:var(--green)" title="Passes all offer guardrails">✅ Ready</span>';
+  if(v.status === "PASS") return '<span style="font-size:10.5px;color:var(--muted)" title="Underwriting strategy is Pass">— Pass</span>';
+  return `<span style="font-size:10.5px;color:var(--red);font-weight:700" title="${escapeHtml(v.reasons.join('; '))}">🛑 Manual Review</span>`;
+}
+
 function assignmentStatus(buyerMao, hardMax, potential){
   if(potential < MIN_ASSIGNMENT) return {icon:"⛔", label:"BELOW $5K MIN", color:"var(--red)"};
   if(potential <= MIN_ASSIGNMENT * 2) return {icon:"🔴", label:"NEAR HARD MAX", color:"var(--red)"};
@@ -597,6 +695,8 @@ function render(){
           <button class="iconBtn offerBtn" title="Generate Offer Text / LOI" onclick="openOfferModal('${row.id}')">📝</button>
         </div>
         <div class="assignLive" style="color:var(--muted)">${projectedAssignmentLabel(row)}</div>
+        <div class="assignLive">${manualReviewBadge(row)} ${offerPctBadge(row)}</div>
+        ${dealAtAskBadge(row)}
       </td>
       <td class="notes" style="max-width:210px">
         <input class="editable agentName" value="${(row.agent&&row.agent!=="UNKNOWN"?row.agent:"").replace(/"/g,'&quot;')}" placeholder="Agent name" onchange="updateField('${row.id}','agent',this.value)">
@@ -912,7 +1012,8 @@ function exportGHLCSV(){
     "First Name","Last Name","Phone","Business Name","Tags",
     "Opportunity Name","Pipeline","Stage",
     "Property Address","List Price","ARV","Repair Estimate",
-    "Buyer MAO","Opening Offer","Target Contract","Hard Max","Underwriting Strategy",
+    "Buyer MAO","Opening Offer","Opening Offer % of List","Target Contract","Hard Max","Underwriting Strategy",
+    "Guardrail Status","Guardrail Reasons",
     "Days on Market","Deal Score","Deal Strategy","Equity %","Mortgage Rate",
     "MLS #","Zillow Link","Underwriting Notes","Last Synced","Draft Offer Text"
   ];
@@ -939,11 +1040,14 @@ function exportGHLCSV(){
 
     const fullAddress = [row.address, row.city||"Houston", (row.state||"TX") + " " + (row.zip||"")].filter(Boolean).join(", ");
 
+    const pct = offerPctOfList(row);
+    const guardrail = validateOffer(row);
     const vals = [
       first, last, hasPhone ? row.agentPhone : "", row.brokerage||"", tags.join(","),
       row.address||"", "Acquisitions Pipeline", "Hot lead",
       fullAddress, row.price ?? "", row.arv ?? "", row.repairs ?? "",
-      row.buyerMao ?? "", row.openingOffer ?? "", row.mao ?? "", row.hardMax ?? "", row.underwritingStrategy||"",
+      row.buyerMao ?? "", row.openingOffer ?? "", (pct===null?"":Math.round(pct*100)+"%"), row.mao ?? "", row.hardMax ?? "", row.underwritingStrategy||"",
+      guardrail.status, guardrail.reasons.join("; "),
       row.dom ?? "", row.score ?? "", row.dealStrategy||"",
       row.equityPct ?? "", (row.mortgageRate === null || row.mortgageRate === undefined) ? "" : row.mortgageRate,
       row.mls||"", row.zillow||"", row.notes||"", today, draftOfferText
@@ -1017,6 +1121,36 @@ function updateAssignPreview(){
   else if(st.label) warn = ` ${st.icon} ${st.label}`;
   else if(st.icon === '⚠️') warn = ' ⚠️ below target';
   el.innerHTML = `Buyer MAO $${bm.toLocaleString()} − Contract $${price.toLocaleString()} = <span style="color:${st.color};font-weight:700">Potential fee: $${potential.toLocaleString()}</span> <span style="color:var(--muted)">(Target fee: $${TARGET_ASSIGNMENT.toLocaleString()})</span>${warn}`;
+  updateGuardrailBanner();
+}
+
+function updateGuardrailBanner(){
+  const row = DATA.find(d=>d.id===OFFER_ROW_ID);
+  const banner = document.getElementById('guardrailBanner');
+  const overrideRow = document.getElementById('guardrailOverrideRow');
+  const genBtn = document.getElementById('generateOfferBtn');
+  if(!row || !banner || !genBtn) return;
+  const priceVal = document.getElementById('o_price').value;
+  const v = validateOffer(row, priceVal);
+  if(v.status === "READY"){
+    banner.style.display = "none";
+    overrideRow.style.display = "none";
+    const ov = document.getElementById('o_override');
+    if(ov) ov.checked = false;
+    genBtn.disabled = false;
+    genBtn.title = "";
+    return;
+  }
+  banner.style.display = "block";
+  banner.style.background = "rgba(239,68,68,0.1)";
+  banner.style.color = "var(--red)";
+  banner.style.border = "1px solid var(--red)";
+  const label = v.status === "PASS" ? "PASS -- underwriting strategy is Pass" : "MANUAL REVIEW REQUIRED";
+  banner.innerHTML = `<strong>⛔ ${label}</strong><br>` + v.reasons.map(r=>`• ${escapeHtml(r)}`).join("<br>");
+  overrideRow.style.display = "block";
+  const overridden = document.getElementById('o_override') && document.getElementById('o_override').checked;
+  genBtn.disabled = !overridden;
+  genBtn.title = overridden ? "" : "Blocked by offer guardrails -- check the override box to enable";
 }
 
 function openOfferModal(id){
@@ -1035,7 +1169,10 @@ function openOfferModal(id){
   document.getElementById('o_assigns').checked = true;
   document.getElementById('o_extra').value = "";
   document.getElementById('offerOutputs').style.display = "none";
+  const ovInit = document.getElementById('o_override');
+  if(ovInit) ovInit.checked = false;
   document.getElementById('offerModal').showModal();
+  updateGuardrailBanner();
 }
 
 // Builds a "we ran comps" justification lead-in, e.g.
@@ -1128,6 +1265,14 @@ function generateOffer(){
   if(!row) return;
   const price = Number(document.getElementById('o_price').value);
   if(!price){ alert("Enter an offer price."); return; }
+  // Defense in depth: even if the disabled-button state was somehow bypassed,
+  // refuse here too unless the guardrails pass or have been explicitly overridden.
+  const v = validateOffer(row, price);
+  const overridden = document.getElementById('o_override') && document.getElementById('o_override').checked;
+  if(v.status !== "READY" && !overridden){
+    alert("Blocked by offer guardrails:\n\n" + v.reasons.join("\n") + "\n\nCheck \"I've reviewed this...\" in the modal to override.");
+    return;
+  }
   const o = {
     price,
     earnest: Number(document.getElementById('o_earnest').value) || 500,
