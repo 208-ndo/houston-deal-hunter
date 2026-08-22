@@ -872,7 +872,7 @@ function buildShortMessage(row, o, my){
   if(o.extraTerms) lines.push(`• ${o.extraTerms}`);
   lines.push(`• Offer open through ${o.expiresText}`);
   lines.push(``);
-  lines.push(`Please present this to your seller and let me know — I can send over the agreement once I hear back.`);
+  lines.push(`Please present this to your seller and let me know.`);
   const sigName = [my.name || "[Add your name in ⚙ My Info]", my.company].filter(Boolean).join(" / ");
   const sigContact = [my.phone, my.email].filter(Boolean).join(" · ");
   {
@@ -906,7 +906,7 @@ function buildLOI(row, o, my){
   if(o.extraTerms) parts.push(`• ${o.extraTerms}`);
   parts.push(`• This offer is open through ${o.expiresText}`);
   parts.push(``);
-  parts.push(`If that works, I'll send over the agreement and take care of everything on my end — please let us know what we can do to help your client.`);
+  parts.push(`Please let us know what we can do to help your client.`);
   parts.push(``);
   parts.push(`Talk soon,`);
   const sigName = [my.name || "[Add your name in ⚙ My Info]", my.company].filter(Boolean).join(" / ");
